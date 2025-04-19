@@ -99,6 +99,30 @@ begin
   end;
 end;
 
+function FindNPCPlacedRecord(baseNPCRecord: IwbMainRecord;): IwbMainRecord;
+var
+  refRecord: IwbMainRecord;
+  i: integer;
+  findRecordFlag: boolean;
+begin
+  Result := nil;
+  findRecordFlag := false;
+  for i := 0 to Pred(ReferencedByCount(baseNPCRecord)) do begin
+    // Scan for records that reference the replaced NPC record
+    refRecord := ReferencedByIndex(baseNPCRecord, i);
+    //AddMessage(IntToStr(i) + '. RefernceRecord Signature: ' + Signature(refRecord));
+    if Signature(refRecord) = 'ACHR' then begin
+      Result := refRecord;
+      findRecordFlag := true;
+      break;
+    end;
+  end;
+  if findRecordFlag then
+    AddMessage('Success to find ACHR record.')
+  else
+    AddMessage('Failed to find ACHR record.');
+end;
+
 function Initialize: integer;
 var
   validInput : boolean;
@@ -142,7 +166,7 @@ begin
       
     // フォロワーNPCを残すかどうか
     if selected[1] = 'True' then
-      leaveFollowerNPC := 'true';
+      leaveFollowerNPC := true;
       
     // 性別を変更するか
     if selected[2] = 'True' then
@@ -230,8 +254,9 @@ end;
 function Process(e: IInterface): integer;
 
 var
-  targetFormID: integer;
-  followerFormID, targetEditorID, followerEditorID: string; // レコードID関連
+  NPC_ACHRRecord: IwbMainRecord;
+  targetFormID, followerFormID: integer;
+  targetEditorID, followerEditorID: string; // レコードID関連
   trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID: string; // SkyPatcher iniファイルの記入用
 begin
   targetFormID := 0;
@@ -258,11 +283,24 @@ begin
   end;
   
   // フォロワーNPCのForm ID, Editor IDを取得
-  followerFormID := IntToHex64(GetElementNativeValues(e, 'Record Header\FormID') and  $FFFFFF, 8);
+  followerFormID := GetElementNativeValues(e, 'Record Header\FormID');
   // AddMessage('New record Form ID: ' + followerFormID);
   followerEditorID := GetElementEditValues(e, 'EDID');
   // AddMessage('Created new record with Editor ID: ' + followerEditorID);
   
+
+  if leaveFollowerNPC = false then begin
+    // Skip if ACHR record already exists
+    AddMessage('Check if this NPC is already placed...');
+    NPC_ACHRRecord := FindNPCPlacedRecord(e);
+    if not Assigned(NPC_ACHRRecord) then begin
+      AddMessage('The NPC is not placed.');
+    end
+    else begin
+      remove(NPC_ACHRRecord);
+      AddMessage('NPC place record has removed.');
+    end;
+  end;
 
   // 出力ファイル用の配列操作
   if useFormID then begin
