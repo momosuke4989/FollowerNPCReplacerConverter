@@ -12,7 +12,7 @@ var
   
   // イニシャル処理で設定・使用する変数
   targetID: string;
-  useFormID, removeFollowerNPC, replaceGender, isInputProvided: boolean;
+  useFormID, removeFollowerNPC, isInputProvided: boolean;
 
 function ShowCheckboxForm(const options: TStringList; out selected: TStringList): Boolean;
 var
@@ -143,7 +143,6 @@ begin
   try
     opts.Add('Use Form ID for config file output');
     opts.Add('Remove follower NPCs in the game');
-    opts.Add('Replace gender');
 
     if ShowCheckboxForm(opts, selected) then
     begin
@@ -165,10 +164,6 @@ begin
     // フォロワーNPCを残すかどうか
     if selected[1] = 'True' then
       removeFollowerNPC := true;
-      
-    // 性別を変更するか
-    if selected[2] = 'True' then
-      replaceGender := true;
       
   finally
     opts.Free;
@@ -264,7 +259,7 @@ var
   NPC_ACHRRecord: IwbMainRecord;
   targetFormID, followerFormID: integer;
   targetEditorID, followerEditorID: string; // レコードID関連
-  trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID, slGender: string; // SkyPatcher iniファイルの記入用
+  trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID: string; // SkyPatcher iniファイルの記入用
 begin
   targetFormID := 0;
   targetEditorID := '';
@@ -323,13 +318,6 @@ begin
     slFollowerID := followerEditorID;
   end;
   
-  // 性別フラグを反映する文字列を入力
-  flags := ElementByPath(e, 'ACBS - Configuration');
-  if GetElementEditValues(flags, 'Flags\Female') = 1 then
-    slGender := '|FEMALE'
-  else
-    slGender := '|MALE';
-
   // NPCレコードのWNAMフィールドが設定されていたらWNAMのスキンを反映
   wnamID := IntToHex(GetElementNativeValues(e, 'WNAM') and  $FFFFFF, 1);
   //  AddMessage('wnamID is:' + wnamID);
@@ -340,12 +328,7 @@ begin
     
   
   slExport.Add('#' + GetElementEditValues(e, 'FULL'));
-  if replaceGender then begin
-    slExport.Add('match=' + slTargetID + ' swap=' + slFollowerID + slGender + #13#10);
-  end
-  else
-    slExport.Add('match=' + slTargetID + ' swap=' + slFollowerID + #13#10);
-
+  slExport.Add('match=' + slTargetID + ' swap=' + slFollowerID + #13#10);
 
 end;
 
