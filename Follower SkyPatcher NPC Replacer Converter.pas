@@ -12,7 +12,7 @@ var
   
   // イニシャル処理で設定・使用する変数
   targetID: string;
-  useFormID, leaveFollowerNPC, replaceGender, replaceRace, replaceVoiceType, isInputProvided: boolean;
+  useFormID, removeFollowerNPC, replaceGender, replaceRace, replaceVoiceType, isInputProvided: boolean;
 
 function ShowCheckboxForm(const options: TStringList; out selected: TStringList): Boolean;
 var
@@ -79,7 +79,7 @@ var
   ch: Char;
 begin
   Result := true;
-  if Length(s) = 8 then begin
+  if Length(s) <= 8 then begin
     for i := 1 to Length(s) do
     begin
       ch := s[i];
@@ -94,7 +94,7 @@ begin
     end;
   end
   else begin
-    AddMessage('The number of digits entered is invalid. Please enter 8 digits.');
+    AddMessage('The number of digits entered is invalid. Please enter 8 digits or less.');
     Result := false;
   end;
 end;
@@ -142,7 +142,7 @@ begin
   // 各オプションの設定
   try
     opts.Add('Use Form ID for config file output');
-    opts.Add('Leave follower NPCs in the game');
+    opts.Add('Remove follower NPCs in the game');
     opts.Add('Replace gender');
     opts.Add('Replace race');
     opts.Add('Replace voice type');
@@ -166,7 +166,7 @@ begin
       
     // フォロワーNPCを残すかどうか
     if selected[1] = 'True' then
-      leaveFollowerNPC := true;
+      removeFollowerNPC := true;
       
     // 性別を変更するか
     if selected[2] = 'True' then
@@ -186,45 +186,37 @@ begin
   end;
 
   // 見た目を変更するNPCのIDを入力する
-  repeat
-    isInputProvided := InputQuery('Target ID Input', 'Enter the Target ID.', targetID);
-    if not isInputProvided then begin
-      MessageDlg('Cancel was pressed, aborting the script.', mtInformation, [mbOK], 0);
-      Result := -1;
-      Exit;
-    end;
-//    AddMessage('now targetID:' + targetID);
-    if targetID = '' then begin // 入力のチェック
-      MessageDlg('Input is empty. Please reenter Target ID.', mtInformation, [mbOK], 0);
-      validInput := false;
-    end
-    else begin
-      if useFormID then begin
+  if useFormID then begin
+    repeat
+      isInputProvided := InputQuery('Target Form ID Input', 'Enter the Target Form ID.' + #13#10 + 'To specify a record that belongs to an ESL flaged ESP, enter the last three digits.', targetID);
+      if not isInputProvided then begin
+        MessageDlg('Cancel was pressed, aborting the script.', mtInformation, [mbOK], 0);
+        Result := -1;
+        Exit;
+      end;
+  //    AddMessage('now targetID:' + targetID);
+      if targetID = '' then begin // 入力のチェック
+        MessageDlg('Input is empty. Please reenter Target Form ID.', mtInformation, [mbOK], 0);
+        validInput := false;
+      end
+      else begin
         if InputValidationFormID(targetID) then begin
           AddMessage('The input is valid.');
+          AddMessage('Target Form ID set to: ' + targetID);
           validInput := true;
         end
         else begin
           MessageDlg('The input is invalid.', mtInformation, [mbOK], 0);
           validInput := false;
         end;
-      end
-      else begin
-        AddMessage('The input is valid.');
-        validInput := true;
       end;
-    end;
-      
-    if validInput = false then begin
-      targetID := '';
-    end;
-
-  until (isInputProvided) and (validInput);
-  
-  AddMessage('Target ID set to: ' + targetID);
-
-  // リプレイス先のNPCが所属するプラグイン名を入力させる
-  if useFormID then begin
+        
+      if validInput = false then begin
+        targetID := '';
+      end;
+    until (isInputProvided) and (validInput);
+    
+    // リプレイス先のNPCが所属するプラグイン名を入力させる
     repeat
       isInputProvided := InputQuery('Target filename Input', 'Enter the Target filename with extension.', targetFileName);
       if not isInputProvided then begin
@@ -245,8 +237,32 @@ begin
       if validInput = false then begin
         targetFileName := '';
       end;
-
     until (isInputProvided) and (validInput);
+
+  end
+  else begin
+      repeat
+      isInputProvided := InputQuery('Target Editor ID Input', 'Enter the Target Editor ID.', targetID);
+      if not isInputProvided then begin
+        MessageDlg('Cancel was pressed, aborting the script.', mtInformation, [mbOK], 0);
+        Result := -1;
+        Exit;
+      end;
+  //    AddMessage('now targetID:' + targetID);
+      if targetID = '' then begin // 入力のチェック
+        MessageDlg('Input is empty. Please reenter Target Editor ID.', mtInformation, [mbOK], 0);
+        validInput := false;
+      end
+      else begin
+        AddMessage('Target Editor ID set to: ' + targetID);
+        validInput := true;
+      end;
+        
+      if validInput = false then begin
+        targetID := '';
+      end;
+    until (isInputProvided) and (validInput);
+
   end;
   
 end;
@@ -254,13 +270,19 @@ end;
 function Process(e: IInterface): integer;
 
 var
-  NPC_ACHRRecord: IwbMainRecord;
+  flags, raceElement, voiceTypeElement: IInterface;
+  NPC_ACHRRecord, raceRecord, voiceTypeRecord: IwbMainRecord;
   targetFormID, followerFormID: integer;
   targetEditorID, followerEditorID: string; // レコードID関連
-  trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID: string; // SkyPatcher iniファイルの記入用
+  commentOutGender, commentOutRace, commentOutVoiceType, setRace, setVoiceType: string;
+  trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID, slGender, slRace, slVoiceType: string; // SkyPatcher iniファイルの記入用
 begin
   targetFormID := 0;
   targetEditorID := '';
+  
+  commentOutGender := '';
+  commentOutRace := '';
+  commentOutVoiceType := '';
 
   // NPCレコードでなければスキップ
   if Signature(e) <> 'NPC_' then begin
@@ -288,8 +310,8 @@ begin
   followerEditorID := GetElementEditValues(e, 'EDID');
   // AddMessage('Created new record with Editor ID: ' + followerEditorID);
   
-
-  if leaveFollowerNPC = false then begin
+  // オプションに応じて、フォロワーNPCの配置レコードを削除
+  if removeFollowerNPC then begin
     // Skip if ACHR record already exists
     AddMessage('Check if this NPC is already placed...');
     NPC_ACHRRecord := FindNPCPlacedRecord(e);
@@ -302,6 +324,20 @@ begin
     end;
   end;
 
+  // 性別、種族、声のオプションに応じて、各行をコメントアウトさせる
+  if replaceGender = false then
+    commentOutGender := ';';
+  if replaceRace = false then
+    commentOutRace := ';';
+  if replaceVoiceType = false then
+    commentOutVoiceType := ';';
+  
+  // フォロワーNPCの種族と音声タイプを取得
+  raceElement := ElementByPath(e, 'RNAM');
+  raceRecord := LinksTo(raceElement);
+  voiceTypeElement := ElementByPath(e, 'VTCK');
+  voiceTypeRecord := LinksTo(voiceTypeElement);
+  
   // 出力ファイル用の配列操作
   if useFormID then begin
     // ゼロパディングしない形式のForm IDを設定、iniファイルへの記入はこちらを利用する
@@ -310,11 +346,22 @@ begin
     
     slTargetID := targetFileName + '|' + trimedTargetFormID;
     slFollowerID := followerFileName + '|' + trimedFollowerFormID;
+    slRace  := GetFileName(raceRecord) + '|' + IntToHex(FormID(raceRecord) and  $FFFFFF, 1);
+    slVoiceType := GetFileName(voiceTypeRecord) + '|' + IntToHex(FormID(voiceTypeRecord) and  $FFFFFF, 1);
   end
   else begin
     slTargetID := targetEditorID;
     slFollowerID := followerEditorID;
+    slRace  := EditorID(raceRecord);
+    slVoiceType := EditorID(voiceTypeRecord);
   end;
+  
+  // 性別フラグを反映する文字列を入力
+  flags := ElementByPath(e, 'ACBS - Configuration');
+  if GetElementEditValues(flags, 'Flags\Female') = 1 then
+    slGender := ':setFlags=female'
+  else
+    slGender := ':removeFlags=female';
 
   // NPCレコードのWNAMフィールドが設定されていたらWNAMのスキンを反映
   wnamID := IntToHex(GetElementNativeValues(e, 'WNAM') and  $FFFFFF, 1);
@@ -323,9 +370,13 @@ begin
     slSkinID := slFollowerID
   else
     slSkinID := followerFileName + '|' + wnamID;
-
+    
+  
   slExport.Add(';' + GetElementEditValues(e, 'FULL'));
-  slExport.Add('filterByNpcs=' + slTargetID + ':copyVisualStyle=' + slFollowerID + ':skin=' + slSkinID + #13#10);
+  slExport.Add('filterByNpcs=' + slTargetID + ':copyVisualStyle=' + slFollowerID + ':skin=' + slSkinID);
+  slExport.Add(commentOutGender + 'filterByNpcs=' + slTargetID + slGender);
+  slExport.Add(commentOutRace + 'filterByNpcs=' + slTargetID + ':race=' + slRace);
+  slExport.Add(commentOutVoiceType + 'filterByNpcs=' + slTargetID + ':voiceType=' + slVoiceType + #13#10);
 
 
 end;
