@@ -79,7 +79,7 @@ var
   ch: Char;
 begin
   Result := true;
-  if Length(s) <= 8 then begin
+  if Length(s) = 8 then begin
     for i := 1 to Length(s) do
     begin
       ch := s[i];
@@ -94,7 +94,7 @@ begin
     end;
   end
   else begin
-    AddMessage('The number of digits entered is invalid. Please enter 8 digits or less.');
+    AddMessage('The number of digits entered is invalid. Please enter 8 digits.');
     Result := false;
   end;
 end;
@@ -121,6 +121,21 @@ begin
     AddMessage('Success to find ACHR record.')
   else
     AddMessage('Failed to find ACHR record.');
+end;
+
+function RemoveLeadingZeros(const s: string): string;
+var
+  i: Integer;
+begin
+  i := 1;
+  // 先頭の '0' をスキップ
+  while (i <= Length(s)) and (s[i] = '0') do
+    Inc(i);
+  // すべてが '0' の場合は '0' を返す
+  if i > Length(s) then
+    Result := '0'
+  else
+    Result := Copy(s, i, Length(s) - i + 1);
 end;
 
 function Initialize: integer;
@@ -188,7 +203,7 @@ begin
   // 見た目を変更するNPCのIDを入力する
   if useFormID then begin
     repeat
-      isInputProvided := InputQuery('Target Form ID Input', 'Enter the Target Form ID.' + #13#10 + 'To specify a record that belongs to an ESL flaged ESP, enter the last three digits.', targetID);
+      isInputProvided := InputQuery('Target Form ID Input', 'Enter the Target Form ID.', targetID);
       if not isInputProvided then begin
         MessageDlg('Cancel was pressed, aborting the script.', mtInformation, [mbOK], 0);
         Result := -1;
@@ -272,12 +287,12 @@ function Process(e: IInterface): integer;
 var
   flags, raceElement, voiceTypeElement: IInterface;
   NPC_ACHRRecord, raceRecord, voiceTypeRecord: IwbMainRecord;
-  targetFormID, followerFormID: integer;
-  targetEditorID, followerEditorID: string; // レコードID関連
+  followerFormID: Cardinal;
+  targetFormID, targetEditorID, followerEditorID: string; // レコードID関連
   commentOutGender, commentOutRace, commentOutVoiceType, setRace, setVoiceType: string;
   trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID, slGender, slRace, slVoiceType: string; // SkyPatcher iniファイルの記入用
 begin
-  targetFormID := 0;
+  targetFormID := '';
   targetEditorID := '';
   
   commentOutGender := '';
@@ -295,8 +310,9 @@ begin
 
   // ターゲットNPCのFormID,EditorIDを取得
   if useFormID then begin
-    targetFormID := StrToInt('$' + targetID);
-    //AddMessage('Target Form ID: ' + IntToHex(targetFormID and  $FFFFFF, 1));
+    targetFormID := targetID
+    //AddMessage('Target Form ID: ' + IntToHex(targetFormID, 8));
+    //AddMessage('Target Form ID: ' + IntToStr(targetFormID));
    // AddMessage('Target Filename: ' + targetFileName);
   end
   else begin
@@ -306,9 +322,10 @@ begin
   
   // フォロワーNPCのForm ID, Editor IDを取得
   followerFormID := GetElementNativeValues(e, 'Record Header\FormID');
-  // AddMessage('New record Form ID: ' + followerFormID);
+   //AddMessage('Follower Form ID: ' + IntToStr(followerFormID));
+   //AddMessage('Follower Form ID: ' + IntToHex(followerFormID, 8));
   followerEditorID := GetElementEditValues(e, 'EDID');
-  // AddMessage('Created new record with Editor ID: ' + followerEditorID);
+  // AddMessage('Follower Editor ID: ' + followerEditorID);
   
   // オプションに応じて、フォロワーNPCの配置レコードを削除
   if removeFollowerNPC then begin
@@ -340,8 +357,14 @@ begin
   
   // 出力ファイル用の配列操作
   if useFormID then begin
-    // ゼロパディングしない形式のForm IDを設定、iniファイルへの記入はこちらを利用する
-    trimedTargetFormID := IntToHex(targetFormID and  $FFFFFF, 1);
+    // ゼロパディングしない形式のForm IDを設定、iniファイルへの記入はこちらを利用する  
+    if  UpperCase(Copy(targetFormID, 1, 2)) = 'FE' then
+      trimedTargetFormID := Copy(targetFormID, 6, 8)
+    else
+      trimedTargetFormID := Copy(targetFormID, 3, 8);
+      
+    trimedTargetFormID := RemoveLeadingZeros(trimedTargetFormID);
+    
     trimedFollowerFormID := IntToHex(followerFormID and  $FFFFFF, 1);
     
     slTargetID := targetFileName + '|' + trimedTargetFormID;
