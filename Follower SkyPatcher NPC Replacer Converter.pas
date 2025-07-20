@@ -1,10 +1,5 @@
 unit UserScript;
 
-interface
-implementation
-uses xEditAPI, SysUtils, StrUtils, Windows;
-uses 'Forms','Controls','StdCtrls','CheckLst','Dialogs';
-
 var
   // iniファイル出力用変数
   slExport: TStringList;
@@ -138,6 +133,34 @@ begin
     Result := Copy(s, i, Length(s) - i + 1);
 end;
 
+function FileNameByFormID(const formIDStr: string): string;
+var
+  formID, i: cardinal;
+  f: IInterface;
+  rec: IInterface;
+begin
+  Result := '';
+  // StrToIntでは負数になってしまうので、StrToInt64で変換し、Cardinal型で受け取る。
+  formID := StrToInt64('$' + formIDStr);
+//  AddMessage('Converted Form ID: ' + IntToStr(formID));
+
+  // 0始まりに加えて、Skyrim.exeの分も足してループ回数を減らす。
+  for i := 0 to FileCount - 2 do begin
+    f := FileByLoadOrder(i);
+//    AddMessage('Searching file name: ' + GetFileName(f));
+    rec := RecordByFormID(f, formID, True);
+//    AddMessage('Record Form ID: ' + IntToStr(GetLoadOrderFormID(rec)));
+    // Form IDを取得する関数はいくつかあるが、ロードオーダーを含めたForm IDを取得できるのはGetLoadOrderFormID
+    if Assigned(rec) and GetLoadOrderFormID(rec) = formID then begin
+      Result := GetFileName(f);
+      Exit;
+    end;
+  end;
+  
+  AddMessage('Entered Form ID can''t be find. Check the Form ID is correct and target file is loaded.');
+
+end;
+
 function Initialize: integer;
 var
   validInput : boolean;
@@ -161,6 +184,7 @@ begin
     opts.Add('Replace gender');
     opts.Add('Replace race');
     opts.Add('Replace voice type');
+
 
     if ShowCheckboxForm(opts, selected) then
     begin
@@ -194,7 +218,7 @@ begin
     // Voice Typeを変更するか
     if selected[4] = 'True' then
       replaceVoiceType := true;
-      
+    
   finally
     opts.Free;
     selected.Free;
@@ -203,7 +227,7 @@ begin
   // 見た目を変更するNPCのIDを入力する
   if useFormID then begin
     repeat
-      isInputProvided := InputQuery('Target Form ID Input', 'Enter the Target Form ID.', targetID);
+      isInputProvided := InputQuery('Target Form ID Input', 'Enter the target Form ID in 8 digits.', targetID);
       if not isInputProvided then begin
         MessageDlg('Cancel was pressed, aborting the script.', mtInformation, [mbOK], 0);
         Result := -1;
@@ -231,29 +255,16 @@ begin
       end;
     until (isInputProvided) and (validInput);
     
-    // リプレイス先のNPCが所属するプラグイン名を入力させる
-    repeat
-      isInputProvided := InputQuery('Target filename Input', 'Enter the Target filename with extension.', targetFileName);
-      if not isInputProvided then begin
-        MessageDlg('Cancel was pressed, aborting the script.', mtInformation, [mbOK], 0);
-        Result := -1;
-        Exit;
-      end;
-  //    AddMessage('now Target filename:' + Target filename);
-      if targetFileName = '' then begin // 入力のチェック
-        MessageDlg('Input is empty. Please reenter Target filename.', mtInformation, [mbOK], 0);
-        validInput := false;
-      end
-      else begin
-        AddMessage('Target filename: ' + targetFileName);
-        validInput := true;
-      end;
-        
-      if validInput = false then begin
-        targetFileName := '';
-      end;
-    until (isInputProvided) and (validInput);
-
+    // ターゲットNPCが所属するファイル名を取得
+    targetFileName := FileNameByFormID(targetID);
+    if targetFileName = '' then begin
+      MessageDlg('Target file can''t find. Script will be aborted.', mtInformation, [mbOK], 0);
+      Result := -1;
+      Exit;
+    end
+    else
+      AddMessage('Target file name set to: ' + targetFileName);
+    
   end
   else begin
       repeat
@@ -277,7 +288,7 @@ begin
         targetID := '';
       end;
     until (isInputProvided) and (validInput);
-
+    
   end;
   
 end;
