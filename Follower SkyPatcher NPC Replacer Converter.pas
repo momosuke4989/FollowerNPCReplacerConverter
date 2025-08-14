@@ -7,7 +7,7 @@ var
   
   // イニシャル処理で設定・使用する変数
   targetID: string;
-  useFormID, removeFollowerNPC, replaceGender, replaceRace, replaceVoiceType, isInputProvided: boolean;
+  useFormID, removeFollowerNPC, replaceSkin, replaceGender, replaceRace, replaceVoiceType, isInputProvided: boolean;
 
 function ShowCheckboxForm(const options: TStringList; out selected: TStringList): Boolean;
 var
@@ -161,6 +161,53 @@ begin
 
 end;
 
+{
+function findRecordByID(const recordID, signature: string, useFormID: boolean): IwbMainRecord;
+var
+  formID, i: cardinal;
+  editorID: string;
+  f, rec: IInterface;
+  npcRecordGroup: IwbGroupRecord;
+begin
+  Result := nil;
+  
+  if useFormID then begin
+    // StrToIntでは負数になってしまうので、StrToInt64で変換し、Cardinal型で受け取る。
+    formID := StrToInt64('$' + recordID);
+  //  AddMessage('Converted Form ID: ' + IntToStr(formID));
+  end
+  else
+    editorID := recordID;
+
+  // 0始まりに加えて、Skyrim.exeの分も足してループ回数を減らす。
+  for i := 0 to FileCount - 2 do begin
+    f := FileByLoadOrder(i);
+//    AddMessage('Searching file name: ' + GetFileName(f));
+    if useFormID then begin
+      rec := RecordByFormID(f, formID, True);
+  //    AddMessage('Record Form ID: ' + IntToStr(GetLoadOrderFormID(rec)));
+      // Form IDを取得する関数はいくつかあるが、ロードオーダーを含めたForm IDを取得できるのはGetLoadOrderFormID
+      if Assigned(rec) and Signature(rec) = signature and GetLoadOrderFormID(rec) = formID then begin
+        Result := rec;
+        break;
+      end;
+    end
+    else begin
+      npcRecordGroup := GroupBySignature(f, signature);
+      rec := MainRecordByEditorID(npcRecordGroup, editorID);
+      if Assigned(rec) and Signature(rec) = signature then begin
+        Result := rec;
+        break;
+      end;
+    end;
+  end;
+  if not Result = nil then
+    AddMessage('Record is finded by entered record ID');
+  else
+    AddMessage('Entered Record ID can''t be find. Check the Record ID is correct and target file is loaded.');
+end;
+}
+
 function Initialize: integer;
 var
   validInput : boolean;
@@ -181,6 +228,7 @@ begin
   try
     opts.Add('Use Form ID for config file output');
     opts.Add('Remove follower NPCs in the game');
+    opts.Add('Replace skin');
     opts.Add('Replace gender');
     opts.Add('Replace race');
     opts.Add('Replace voice type');
@@ -207,16 +255,20 @@ begin
     if selected[1] = 'True' then
       removeFollowerNPC := true;
       
-    // 性別を変更するか
+    // 肌テクスチャを変更するか
     if selected[2] = 'True' then
+      replaceSkin := true;
+      
+    // 性別を変更するか
+    if selected[3] = 'True' then
       replaceGender := true;
       
     // 種族を変更するか
-    if selected[3] = 'True' then
+    if selected[4] = 'True' then
       replaceRace := true;
       
     // Voice Typeを変更するか
-    if selected[4] = 'True' then
+    if selected[5] = 'True' then
       replaceVoiceType := true;
     
   finally
@@ -300,12 +352,13 @@ var
   NPC_ACHRRecord, raceRecord, voiceTypeRecord: IwbMainRecord;
   followerFormID: Cardinal;
   targetFormID, targetEditorID, followerEditorID: string; // レコードID関連
-  commentOutGender, commentOutRace, commentOutVoiceType, setRace, setVoiceType: string;
+  commentOutSkin, commentOutGender, commentOutRace, commentOutVoiceType, setRace, setVoiceType: string;
   trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID, slGender, slRace, slVoiceType: string; // SkyPatcher iniファイルの記入用
 begin
   targetFormID := '';
   targetEditorID := '';
   
+  commentOutSkin := '';
   commentOutGender := '';
   commentOutRace := '';
   commentOutVoiceType := '';
@@ -352,7 +405,9 @@ begin
     end;
   end;
 
-  // 性別、種族、声のオプションに応じて、各行をコメントアウトさせる
+  // 肌、性別、種族、声のオプションに応じて、各行をコメントアウトさせる
+  if replaceSkin = false then
+    commentOutSkin := ';';
   if replaceGender = false then
     commentOutGender := ';';
   if replaceRace = false then
@@ -407,7 +462,8 @@ begin
     
   
   slExport.Add(';' + GetElementEditValues(e, 'FULL'));
-  slExport.Add('filterByNpcs=' + slTargetID + ':copyVisualStyle=' + slFollowerID + ':skin=' + slSkinID);
+  slExport.Add('filterByNpcs=' + slTargetID + ':copyVisualStyle=' + slFollowerID);
+  slExport.Add(commentOutSkin + 'filterByNpcs=' + slTargetID + ':skin=' + slSkinID);
   slExport.Add(commentOutGender + 'filterByNpcs=' + slTargetID + slGender);
   slExport.Add(commentOutRace + 'filterByNpcs=' + slTargetID + ':race=' + slRace);
   slExport.Add(commentOutVoiceType + 'filterByNpcs=' + slTargetID + ':voiceType=' + slVoiceType + #13#10);
