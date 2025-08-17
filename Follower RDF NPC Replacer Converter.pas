@@ -133,33 +133,65 @@ begin
     Result := Copy(s, i, Length(s) - i + 1);
 end;
 
-function FileNameByFormID(const formIDStr: string): string;
+function FindRecordByRecordID(const recordID, signature: string; useFormID: boolean): IwbMainRecord;
 var
   formID, i: cardinal;
-  f: IInterface;
-  rec: IInterface;
+  editorID: string;
+  f:  IwbFile;
+  rec: IwbMainRecord;
+  npcRecordGroup: IwbGroupRecord;
 begin
-  Result := '';
-  // StrToIntでは負数になってしまうので、StrToInt64で変換し、Cardinal型で受け取る。
-  formID := StrToInt64('$' + formIDStr);
-//  AddMessage('Converted Form ID: ' + IntToStr(formID));
+  Result := nil;
+  
+  if useFormID then begin
+    // StrToIntでは負数になってしまうので、StrToInt64で変換し、Cardinal型で受け取る。
+    formID := StrToInt64('$' + recordID);
+  //  AddMessage('Converted Form ID: ' + IntToStr(formID));
+  end
+  else
+    editorID := recordID;
 
   // 0始まりに加えて、Skyrim.exeの分も足してループ回数を減らす。
   for i := 0 to FileCount - 2 do begin
     f := FileByLoadOrder(i);
 //    AddMessage('Searching file name: ' + GetFileName(f));
-    rec := RecordByFormID(f, formID, True);
-//    AddMessage('Record Form ID: ' + IntToStr(GetLoadOrderFormID(rec)));
-    // Form IDを取得する関数はいくつかあるが、ロードオーダーを含めたForm IDを取得できるのはGetLoadOrderFormID
-    if Assigned(rec) and GetLoadOrderFormID(rec) = formID then begin
-      Result := GetFileName(f);
-      Exit;
+    if useFormID then begin
+      rec := RecordByFormID(f, formID, True);
+  //    AddMessage('Record Form ID: ' + IntToStr(GetLoadOrderFormID(rec)));
+      // Form IDを取得する関数はいくつかあるが、ロードオーダーを含めたForm IDを取得できるのはGetLoadOrderFormID
+      if Assigned(rec) and (GetLoadOrderFormID(rec) = formID) then begin
+        AddMessage('Record is found by entered Form ID');
+        if (Signature(rec) = signature) then begin
+          AddMessage('Record signature is correct.');
+          Result := rec;
+        end
+        else
+          AddMessage('Record signature is incorrect.');
+        break;
+      end;
+    end
+    else begin
+      npcRecordGroup := GroupBySignature(f, signature);
+      rec := MainRecordByEditorID(npcRecordGroup, editorID);
+      if Assigned(rec) then begin
+        AddMessage('Record is found by entered Editor ID');
+        if (Signature(rec) = signature)  then begin
+          AddMessage('Record signature is correct.');
+          Result := rec;
+        end
+        else
+          AddMessage('Record signature is incorrect.');
+        break;
+      end;
     end;
   end;
-  
-  AddMessage('Entered Form ID can''t be find. Check the Form ID is correct and target file is loaded.');
+  if Assigned(Result) then
+    AddMessage('Target Record is found')
+  else
+    AddMessage('No target record found for the entered ID. Check the entered ID is correct and target file is loaded.');
 
 end;
+
 
 function Initialize: integer;
 var
@@ -239,16 +271,6 @@ begin
       end;
     until (isInputProvided) and (validInput);
     
-    // ターゲットNPCが所属するファイル名を取得
-    targetFileName := FileNameByFormID(targetID);
-    if targetFileName = '' then begin
-      MessageDlg('Target file can''t find. Script will be aborted.', mtInformation, [mbOK], 0);
-      Result := -1;
-      Exit;
-    end
-    else
-      AddMessage('Target file name set to: ' + targetFileName);
-    
   end
   else begin
       repeat
@@ -281,14 +303,15 @@ function Process(e: IInterface): integer;
 
 var
   flags: IInterface;
-  NPC_ACHRRecord: IwbMainRecord;
+  targetRecord, NPC_ACHRRecord: IwbMainRecord;
   followerFormID: Cardinal;
-  targetFormID, targetEditorID, followerEditorID: string; // レコードID関連
+  recordSignature, targetFormID, targetEditorID, followerEditorID: string; // レコードID関連
   trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID: string; // SkyPatcher iniファイルの記入用
 begin
   targetFormID := '';
   targetEditorID := '';
   
+  recordSignature := 'NPC_';
   // NPCレコードでなければスキップ
   if Signature(e) <> 'NPC_' then begin
     AddMessage(GetElementEditValues(e, 'EDID') + ' is not NPC record.');
@@ -297,18 +320,23 @@ begin
 
   // Mod名を取得（フォロワーレコードが所属するファイル名）
   followerFileName := GetFileName(GetFile(e));
+  
+  // ターゲットNPCのFormID,EditorIDからターゲットNPCのレコードを取得
+  targetRecord := FindRecordByRecordID(targetID, 'NPC_', useFormID);
+  if not Assigned(targetRecord) then begin
+    AddMessage('Target record not found. Processing aborted.');
+    Exit;
+  end;
+  AddMessage('Found record: Editor ID: ' + GetElementEditValues(targetRecord, 'EDID') + ' Name: ' + GetElementEditValues(targetRecord, 'FULL'));
+  targetFileName := GetFileName(targetRecord);
+  AddMessage('Target file name set to: ' + targetFileName);
+  
 
   // ターゲットNPCのFormID,EditorIDを取得
-  if useFormID then begin
-    targetFormID := targetID
-    //AddMessage('Target Form ID: ' + IntToHex(targetFormID, 8));
-    //AddMessage('Target Form ID: ' + IntToStr(targetFormID));
-   // AddMessage('Target Filename: ' + targetFileName);
-  end
-  else begin
-    targetEditorID := targetID;
-    //AddMessage('Target Editor ID: ' + targetEditorID);
-  end;
+  targetFormID := IntToHex64(GetElementNativeValues(targetRecord, 'Record Header\FormID') and  $FFFFFF, 8);
+    //AddMessage('Target Record Form ID: ' + targetFormID);
+  targetEditorID := GetElementEditValues(targetRecord, 'EDID');
+    //AddMessage('Target Record Editor ID: ' + targetEditorID);
   
   // フォロワーNPCのForm ID, Editor IDを取得
   followerFormID := GetElementNativeValues(e, 'Record Header\FormID');
@@ -360,7 +388,7 @@ begin
     slSkinID := wnamID + '~' + followerFileName;
     
   
-  slExport.Add('#' + GetElementEditValues(e, 'FULL'));
+  slExport.Add('#' + GetElementEditValues(targetRecord, 'FULL'));
   slExport.Add('match=' + slTargetID + ' swap=' + slFollowerID + #13#10);
 
 end;
