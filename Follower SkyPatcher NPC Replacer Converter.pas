@@ -239,7 +239,7 @@ begin
     if selected[1] = 'True' then
       removeFollowerNPC := true;
       
-    // 肌テクスチャを変更するか
+    // 肌を変更するか
     if selected[2] = 'True' then
       replaceSkin := true;
       
@@ -372,23 +372,23 @@ begin
     end;
   end;
 
-  // 肌、性別、種族、声のオプションに応じて、各行をコメントアウトさせる
+  // skinオプションの選択に応じて、設定行をコメントアウトする
   if replaceSkin = false then
     commentOutSkin := ';';
   
   // フォロワーNPCの性別、種族、音声タイプを取得
   followerFlags := ElementByPath(e, 'ACBS - Configuration');
   followerRaceElement := ElementByPath(e, 'RNAM');
-  followerRaceRecord := LinksTo(followerRaceElement);
+  followerRaceRecord := MasterOrSelf(LinksTo(followerRaceElement));
   followerVoiceTypeElement := ElementByPath(e, 'VTCK');
-  followerVoiceTypeRecord := LinksTo(followerVoiceTypeElement);
+  followerVoiceTypeRecord := MasterOrSelf(LinksTo(followerVoiceTypeElement));
   
   // ターゲットNPCの性別、種族、音声タイプを取得
   targetFlags := ElementByPath(targetRecord, 'ACBS - Configuration');
   targetRaceElement := ElementByPath(targetRecord, 'RNAM');
-  targetRaceRecord := LinksTo(targetRaceElement);
+  targetRaceRecord := MasterOrSelf(LinksTo(targetRaceElement));
   targetVoiceTypeElement := ElementByPath(targetRecord, 'VTCK');
-  targetVoiceTypeRecord := LinksTo(targetVoiceTypeElement);
+  targetVoiceTypeRecord := MasterOrSelf(LinksTo(targetVoiceTypeElement));
   
   // フォロワーNPCとターゲットNPCの性別、種族、音声タイプを比較して、結果をフラグに反映する。
   if GetElementEditValues(targetFlags, 'Flags\Female') = GetElementEditValues(followerFlags, 'Flags\Female') then
