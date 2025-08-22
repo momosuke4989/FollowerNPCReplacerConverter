@@ -217,10 +217,6 @@ begin
     opts.Add('Use Form ID for config file output');
     opts.Add('Remove follower NPCs in the game');
     opts.Add('Replace skin');
-    opts.Add('Replace gender');
-    opts.Add('Replace race');
-    opts.Add('Replace voice type');
-
 
     if ShowCheckboxForm(opts, selected) then
     begin
@@ -247,18 +243,6 @@ begin
     if selected[2] = 'True' then
       replaceSkin := true;
       
-    // 性別を変更するか
-    if selected[3] = 'True' then
-      replaceGender := true;
-      
-    // 種族を変更するか
-    if selected[4] = 'True' then
-      replaceRace := true;
-      
-    // Voice Typeを変更するか
-    if selected[5] = 'True' then
-      replaceVoiceType := true;
-    
   finally
     opts.Free;
     selected.Free;
@@ -326,20 +310,18 @@ end;
 function Process(e: IInterface): integer;
 
 var
-  flags, raceElement, voiceTypeElement: IInterface;
-  targetRecord, NPC_ACHRRecord, raceRecord, voiceTypeRecord: IwbMainRecord;
+  followerFlags, targetFlags, followerRaceElement, followerVoiceTypeElement, targetRaceElement, targetVoiceTypeElement: IInterface;
+  targetRecord, NPC_ACHRRecord, followerRaceRecord, followerVoiceTypeRecord, targetRaceRecord, targetVoiceTypeRecord: IwbMainRecord;
   followerFormID: Cardinal;
   recordSignature, targetFormID, targetEditorID, followerEditorID: string; // レコードID関連
-  commentOutSkin, commentOutGender, commentOutRace, commentOutVoiceType, setRace, setVoiceType: string;
+  commentOutSkin, commentOutGender, commentOutRace, commentOutVoiceType: string;
   trimedTargetFormID, trimedFollowerFormID, slTargetID, slFollowerID, wnamID, slSkinID, slGender, slRace, slVoiceType: string; // SkyPatcher iniファイルの記入用
+  sameGender, sameRace, sameVoiceType: boolean;
 begin
   targetFormID := '';
   targetEditorID := '';
   
   commentOutSkin := '';
-  commentOutGender := '';
-  commentOutRace := '';
-  commentOutVoiceType := '';
   
   recordSignature := 'NPC_';
 
@@ -393,18 +375,36 @@ begin
   // 肌、性別、種族、声のオプションに応じて、各行をコメントアウトさせる
   if replaceSkin = false then
     commentOutSkin := ';';
-  if replaceGender = false then
-    commentOutGender := ';';
-  if replaceRace = false then
-    commentOutRace := ';';
-  if replaceVoiceType = false then
-    commentOutVoiceType := ';';
   
-  // フォロワーNPCの種族と音声タイプを取得
-  raceElement := ElementByPath(e, 'RNAM');
-  raceRecord := LinksTo(raceElement);
-  voiceTypeElement := ElementByPath(e, 'VTCK');
-  voiceTypeRecord := LinksTo(voiceTypeElement);
+  // フォロワーNPCの性別、種族、音声タイプを取得
+  followerFlags := ElementByPath(e, 'ACBS - Configuration');
+  followerRaceElement := ElementByPath(e, 'RNAM');
+  followerRaceRecord := LinksTo(followerRaceElement);
+  followerVoiceTypeElement := ElementByPath(e, 'VTCK');
+  followerVoiceTypeRecord := LinksTo(followerVoiceTypeElement);
+  
+  // ターゲットNPCの性別、種族、音声タイプを取得
+  targetFlags := ElementByPath(targetRecord, 'ACBS - Configuration');
+  targetRaceElement := ElementByPath(targetRecord, 'RNAM');
+  targetRaceRecord := LinksTo(targetRaceElement);
+  targetVoiceTypeElement := ElementByPath(targetRecord, 'VTCK');
+  targetVoiceTypeRecord := LinksTo(targetVoiceTypeElement);
+  
+  // フォロワーNPCとターゲットNPCの性別、種族、音声タイプを比較して、結果をフラグに反映する。
+  if GetElementEditValues(targetFlags, 'Flags\Female') = GetElementEditValues(followerFlags, 'Flags\Female') then
+    sameGender := true
+  else
+    sameGender := false;
+    
+  if GetElementNativeValues(followerRaceRecord, 'Record Header\FormID') = GetElementNativeValues(targetRaceRecord, 'Record Header\FormID') then
+    sameRace := true
+  else
+    sameRace := false;
+  
+  if GetElementNativeValues(followerVoiceTypeRecord, 'Record Header\FormID') = GetElementNativeValues(targetVoiceTypeRecord, 'Record Header\FormID') then
+    sameVoiceType := true
+  else
+    sameVoiceType := false;
   
   // 出力ファイル用の配列操作
   if useFormID then begin
@@ -420,28 +420,28 @@ begin
     
     slTargetID := targetFileName + '|' + trimedTargetFormID;
     slFollowerID := followerFileName + '|' + trimedFollowerFormID;
-    slRace  := GetFileName(raceRecord) + '|' + IntToHex(FormID(raceRecord) and  $FFFFFF, 1);
-    slVoiceType := GetFileName(voiceTypeRecord) + '|' + IntToHex(FormID(voiceTypeRecord) and  $FFFFFF, 1);
+    slRace  := GetFileName(followerRaceRecord) + '|' + IntToHex(FormID(followerRaceRecord) and  $FFFFFF, 1);
+    slVoiceType := GetFileName(followerVoiceTypeRecord) + '|' + IntToHex(FormID(followerVoiceTypeRecord) and  $FFFFFF, 1);
   end
   else begin
     slTargetID := targetEditorID;
     slFollowerID := followerEditorID;
-    slRace  := EditorID(raceRecord);
-    slVoiceType := EditorID(voiceTypeRecord);
+    slRace  := EditorID(followerRaceRecord);
+    slVoiceType := EditorID(followerVoiceTypeRecord);
   end;
   
   // 性別フラグを反映する文字列を入力
-  flags := ElementByPath(e, 'ACBS - Configuration');
-  if GetElementEditValues(flags, 'Flags\Female') = 1 then
+  if GetElementEditValues(followerFlags, 'Flags\Female') = 1 then
     slGender := ':setFlags=female'
   else
     slGender := ':removeFlags=female';
-
-  // NPCレコードのWNAMフィールドが設定されていたらWNAMのスキンを反映
+  
+  // NPCレコードのWNAMフィールドが設定されていたらWNAMのスキンを反映。
+  // 設定されていない場合はnullでデフォルトボディを指定。
   wnamID := IntToHex(GetElementNativeValues(e, 'WNAM') and  $FFFFFF, 1);
   //  AddMessage('wnamID is:' + wnamID);
   if wnamID = '0' then
-    slSkinID := slFollowerID
+    slSkinID := 'null'
   else
     slSkinID := followerFileName + '|' + wnamID;
     
@@ -449,10 +449,17 @@ begin
   slExport.Add(';' + GetElementEditValues(targetRecord, 'FULL'));
   slExport.Add('filterByNpcs=' + slTargetID + ':copyVisualStyle=' + slFollowerID);
   slExport.Add(commentOutSkin + 'filterByNpcs=' + slTargetID + ':skin=' + slSkinID);
-  slExport.Add(commentOutGender + 'filterByNpcs=' + slTargetID + slGender);
-  slExport.Add(commentOutRace + 'filterByNpcs=' + slTargetID + ':race=' + slRace);
-  slExport.Add(commentOutVoiceType + 'filterByNpcs=' + slTargetID + ':voiceType=' + slVoiceType + #13#10);
-
+  
+  if not sameGender then
+    slExport.Add('filterByNpcs=' + slTargetID + slGender);
+  
+  if not sameRace then
+    slExport.Add('filterByNpcs=' + slTargetID + ':race=' + slRace);
+  
+  if not sameVoiceType then
+    slExport.Add('filterByNpcs=' + slTargetID + ':voiceType=' + slVoiceType);
+  
+  slExport.Add(#13#10);
 
 end;
 
